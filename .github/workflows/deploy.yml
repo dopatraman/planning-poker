@@ -1,0 +1,105 @@
+name: Deploy to Digital Ocean
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build
+        run: npm ci && npm run build
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.DROPLET_IP }} >> ~/.ssh/known_hosts
+
+      - name: Install Node.js on droplet
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} 'node --version 2>/dev/null | grep -q "v22" || {
+            curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+            apt-get install -y -qq nodejs
+          }'
+
+      - name: Install PM2 on droplet
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} 'command -v pm2 &>/dev/null || {
+            npm install -g pm2
+            pm2 startup systemd -u root --hp /root
+          }'
+
+      - name: Install Caddy on droplet
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} 'command -v caddy &>/dev/null || {
+            apt-get update -qq
+            apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
+            curl -1sLf "https://dl.cloudsmith.io/public/caddy/stable/gpg.key" | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null || true
+            curl -1sLf "https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt" | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+            apt-get update -qq
+            apt-get install -y -qq caddy
+            systemctl enable caddy
+          }'
+
+      - name: Sync files to droplet
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} "mkdir -p /var/www/planning-poker"
+          rsync -avz --delete dist/ root@${{ secrets.DROPLET_IP }}:/var/www/planning-poker/dist/
+          rsync -avz --delete dist-server/ root@${{ secrets.DROPLET_IP }}:/var/www/planning-poker/dist-server/
+          rsync -avz package.json package-lock.json root@${{ secrets.DROPLET_IP }}:/var/www/planning-poker/
+
+      - name: Install production dependencies
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} "cd /var/www/planning-poker && npm ci --omit=dev"
+
+      - name: Start or restart app with PM2
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} '
+            cd /var/www/planning-poker
+            if pm2 describe planning-poker &>/dev/null; then
+              pm2 restart planning-poker --update-env
+            else
+              PORT=3000 pm2 start dist-server/index.js --name planning-poker
+            fi
+            pm2 save
+          '
+
+      - name: Migrate Caddyfile to multi-site layout
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} '
+            mkdir -p /etc/caddy/sites
+            if ! grep -q "^import /etc/caddy/sites/" /etc/caddy/Caddyfile 2>/dev/null; then
+              if [ -s /etc/caddy/Caddyfile ]; then
+                cp /etc/caddy/Caddyfile /etc/caddy/sites/legacy.conf
+              fi
+              echo "import /etc/caddy/sites/*" > /etc/caddy/Caddyfile
+            fi
+          '
+
+      - name: Write site config
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} "cat > /etc/caddy/sites/poker.conf << 'EOF'
+          ${{ secrets.DOMAIN }} {
+              reverse_proxy localhost:3000
+          }
+          EOF"
+
+      - name: Reload Caddy
+        run: |
+          ssh root@${{ secrets.DROPLET_IP }} "caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy"
+
+      - name: Deployment complete
+        run: echo "Deployed to https://${{ secrets.DOMAIN }}"
