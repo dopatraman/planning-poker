@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  /* Thinkific-inspired palette */
+  --color-background: oklch(0.96 0.01 90);       /* Beacon cream #F3F1EC */
+  --color-foreground: oklch(0.20 0.04 320);       /* Rooted dark purple #271526 */
+  --color-card: oklch(0.99 0.005 90);             /* warm white */
+  --color-card-foreground: oklch(0.20 0.04 320);
+  --color-popover: oklch(0.99 0.005 90);
+  --color-popover-foreground: oklch(0.20 0.04 320);
+  --color-primary: oklch(0.55 0.17 50);           /* Forge burnt orange #BB4D00 */
+  --color-primary-foreground: oklch(0.98 0 0);
+  --color-secondary: oklch(0.93 0.015 90);        /* darker cream */
+  --color-secondary-foreground: oklch(0.20 0.04 320);
+  --color-muted: oklch(0.92 0.01 90);
+  --color-muted-foreground: oklch(0.52 0.02 80);  /* Sage warm brown #716A5C */
+  --color-accent: oklch(0.93 0.03 90);
+  --color-accent-foreground: oklch(0.20 0.04 320);
+  --color-destructive: oklch(0.55 0.2 25);
+  --color-destructive-foreground: oklch(0.98 0 0);
+  --color-border: oklch(0.88 0.015 80);
+  --color-input: oklch(0.88 0.015 80);
+  --color-ring: oklch(0.55 0.17 50);
+  --radius: 0.75rem;
+
+  --color-poker-green: oklch(0.35 0.08 320);      /* warm purple felt */
+  --color-poker-felt: oklch(0.25 0.06 320);        /* deep purple felt */
+  --color-gold: oklch(0.87 0.18 90);               /* Flare yellow #FCCC18 */
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    margin: 0;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
